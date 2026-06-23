@@ -11,8 +11,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # نسخ بقية الملفات
 COPY . .
 
-# المنفذ
-EXPOSE 8000
+# المنفذ الخاص بـ Hugging Face
+EXPOSE 7860
 
 # تشغيل FastAPI
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860"]

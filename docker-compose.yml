@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pethaven-frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pethaven-backend
+    ports:
+      - "5000:8080"
+    depends_on:
+      - ml-service
+      - llm-service
+
+  ml-service:
+    build:
+      context: ./ML-Service
+      dockerfile: Dockerfile
+    container_name: pethaven-ml
+    ports:
+      - "8000:7860"
+
+  llm-service:
+    build:
+      context: ./LLM-Service
+      dockerfile: Dockerfile
+    container_name: pethaven-llm
+    ports:
+      - "8001:7860"
