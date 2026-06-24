@@ -1,11 +1,8 @@
-version: "3.9"
-
 services:
 
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
     container_name: pethaven-frontend
     ports:
       - "5173:5173"
@@ -15,18 +12,17 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
     container_name: pethaven-backend
     ports:
       - "5000:8080"
     depends_on:
+      - sqlserver
       - ml-service
       - llm-service
 
   ml-service:
     build:
       context: ./ML-Service
-      dockerfile: Dockerfile
     container_name: pethaven-ml
     ports:
       - "8000:7860"
@@ -34,7 +30,23 @@ services:
   llm-service:
     build:
       context: ./LLM-Service
-      dockerfile: Dockerfile
     container_name: pethaven-llm
     ports:
       - "8001:7860"
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: pethaven-sqlserver
+
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "YourStrongPassword123!"
+
+    ports:
+      - "1433:1433"
+
+    volumes:
+      - sql_data:/var/opt/mssql
+
+volumes:
+  sql_data:
