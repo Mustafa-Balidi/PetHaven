@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using PetHaven.Data;  // Exporting DbContext
+using PetHaven.Data;
+using PetHaven.Services;
+using PetHaven.Helpers;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,8 +18,21 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("MyConnection")));
 
 
+// Registering Auth services
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<JwtHelper>();
+
+// Registering Database Seeder
+builder.Services.AddTransient<DatabaseSeeder>();
 
 var app = builder.Build();
+
+// Run the database seeder on startup
+using (var scope = app.Services.CreateScope())
+{
+    var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
+    await seeder.SeedAsync();
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
