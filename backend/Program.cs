@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using PetHaven.Data;
 using PetHaven.Services;
@@ -49,10 +49,14 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 // Registering Auth services
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IAdoptionService, AdoptionService>();
 builder.Services.AddScoped<JwtHelper>();
 
 // Registering Pet services
 builder.Services.AddScoped<IPetService, PetService>();
+
+// Registering Adoption services
+builder.Services.AddScoped<IAdoptionService, AdoptionService>();
 
 // Registering Database Seeder
 builder.Services.AddTransient<DatabaseSeeder>();

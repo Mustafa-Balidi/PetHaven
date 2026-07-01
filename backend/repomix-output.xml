@@ -47,21 +47,29 @@ appsettings.json
 backend.csproj
 backend.http
 Controllers/AuthController.cs
-Controllers/WeatherForecastController.cs
+Controllers/PetsController.cs
 Data/ApplicationDbContext.cs
+Data/DatabaseSeeder.cs
 Dockerfile
 DTOs/AuthResponseDto.cs
+DTOs/CreatePetDto.cs
 DTOs/LoginDto.cs
+DTOs/PetResponseDto.cs
 DTOs/RegisterDto.cs
+DTOs/UpdatePetDto.cs
 DTOs/UserDto.cs
 Helpers/JwtHelper.cs
 Migrations/20260620120853_InitialCreate.cs
 Migrations/20260620120853_InitialCreate.Designer.cs
+Migrations/20260701125852_AddScoringAndNotesToAdoption.cs
+Migrations/20260701125852_AddScoringAndNotesToAdoption.Designer.cs
+Migrations/20260701144125_FixAdoptionAndRemoveAppointmentRequest.cs
+Migrations/20260701144125_FixAdoptionAndRemoveAppointmentRequest.Designer.cs
 Migrations/ApplicationDbContextModelSnapshot.cs
 Models/Adopter.cs
 Models/AdoptionCenter.cs
+Models/AdoptionRequest.cs
 Models/Appointment.cs
-Models/AppointmentRequest.cs
 Models/Blacklist.cs
 Models/Cart.cs
 Models/CartItem.cs
@@ -86,6 +94,8 @@ Program.cs
 Properties/launchSettings.json
 Services/AuthService.cs
 Services/IAuthService.cs
+Services/IPetService.cs
+Services/PetService.cs
 </directory_structure>
 
 <files>
@@ -541,7 +551,7 @@ FodyWeavers.xsd
     "Secret": "YourSuperSecretKeyHereAtLeast32CharactersLong!",
     "Issuer": "PetHaven",
     "Audience": "PetHavenUsers",
-    "ExpiryInMinutes": 20 //  Expired Time : 20 minutes for each token
+    "ExpiryInMinutes": 20 
   },
   "Logging": {
     "LogLevel": {
@@ -598,19 +608,19 @@ namespace PetHaven.Controllers
         }
 
         // =============================================
-        // تسجيل Adopter جديد
-        // POST: api/auth/register/adopter
+        // تسجيل مستخدم جديد (جميع الأدوار)
+        // POST: api/auth/register
         // =============================================
-        [HttpPost("register/adopter")]
-        public async Task<IActionResult> RegisterAdopter([FromBody] RegisterDto registerDto)
+        [HttpPost("register")]
+        public async Task<IActionResult> Register([FromBody] RegisterDto registerDto)
         {
             try
             {
-                var result = await _authService.RegisterAdopterAsync(registerDto);
+                var result = await _authService.RegisterAsync(registerDto);
                 return Ok(new
                 {
                     Success = true,
-                    Message = "تم تسجيل المتبني بنجاح!",
+                    Message = "تم تسجيل المستخدم بنجاح!",
                     Data = result
                 });
             }
@@ -654,37 +664,202 @@ namespace PetHaven.Controllers
 }
 </file>
 
-<file path="Controllers/WeatherForecastController.cs">
+<file path="Controllers/PetsController.cs">
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using PetHaven.DTOs;
+using PetHaven.Services;
 
 namespace PetHaven.Controllers
 {
+    [Route("api/[controller]")]
     [ApiController]
-    [Route("[controller]")]
-    public class WeatherForecastController : ControllerBase
+    public class PetsController : ControllerBase
     {
-        private static readonly string[] Summaries = new[]
-        {
-            "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-        };
+        private readonly IPetService _petService;
 
-        private readonly ILogger<WeatherForecastController> _logger;
-
-        public WeatherForecastController(ILogger<WeatherForecastController> logger)
+        public PetsController(IPetService petService)
         {
-            _logger = logger;
+            _petService = petService;
         }
 
-        [HttpGet(Name = "GetWeatherForecast")]
-        public IEnumerable<WeatherForecast> Get()
+        // =============================================
+        // POST: api/pets/CreateCenterPet
+        // إضافة حيوان أليف جديد (مراكز التبني فقط)
+        // =============================================
+        [HttpPost("CreateCenterPet")]
+        [Authorize(Roles = "AdoptionCenter")]
+        public async Task<IActionResult> AddPet([FromBody] CreatePetDto dto)
         {
-            return Enumerable.Range(1, 5).Select(index => new WeatherForecast
+            try
             {
-                Date = DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-                TemperatureC = Random.Shared.Next(-20, 55),
-                Summary = Summaries[Random.Shared.Next(Summaries.Length)]
-            })
-            .ToArray();
+                var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(new { Success = false, Message = "لم يتم التعرف على المستخدم." });
+
+                var result = await _petService.AddPetAsync(dto, userId);
+
+                return Ok(new
+                {
+                    Success = true,
+                    Message = "تم إضافة الحيوان الأليف بنجاح!",
+                    Data    = result
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new
+                {
+                    Success = false,
+                    Message = ex.Message
+                });
+            }
+        }
+
+        // =============================================
+        // GET: api/pets/AllPets
+        // جلب جميع الحيوانات المتاحة للتبني (عام)
+        // =============================================
+        [HttpGet("AllPets")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetAllAvailablePets()
+        {
+            try
+            {
+                var pets = await _petService.GetAllAvailablePetsAsync();
+
+                return Ok(new
+                {
+                    Success = true,
+                    Data    = pets
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new
+                {
+                    Success = false,
+                    Message = ex.Message
+                });
+            }
+        }
+
+        // =============================================
+        // GET: api/pets/CenterPets
+        // جلب حيوانات المركز المسجّل دخوله (مراكز التبني فقط)
+        // =============================================
+        [HttpGet("CenterPets")]
+        [Authorize(Roles = "AdoptionCenter")]
+        public async Task<IActionResult> GetMyPets()
+        {
+            try
+            {
+                var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(new { Success = false, Message = "لم يتم التعرف على المستخدم." });
+
+                var pets = await _petService.GetPetsByCenterAsync(userId);
+
+                return Ok(new
+                {
+                    Success = true,
+                    Data    = pets
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new
+                {
+                    Success = false,
+                    Message = ex.Message
+                });
+            }
+        }
+
+        // =============================================
+        // PUT: api/pets/UpdateCenterPet/{id}
+        // تعديل بيانات حيوان أليف (مراكز التبني فقط)
+        // =============================================
+        [HttpPut("UpdateCenterPet/{id}")]
+        [Authorize(Roles = "AdoptionCenter")]
+        public async Task<IActionResult> UpdatePet(int id, [FromBody] UpdatePetDto dto)
+        {
+            try
+            {
+                var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(new { Success = false, Message = "لم يتم التعرف على المستخدم." });
+
+                var result = await _petService.UpdatePetAsync(id, dto, userId);
+
+                return Ok(new
+                {
+                    Success = true,
+                    Message = "تم تعديل بيانات الحيوان الأليف بنجاح!",
+                    Data    = result
+                });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, new
+                {
+                    Success = false,
+                    Message = ex.Message
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new
+                {
+                    Success = false,
+                    Message = ex.Message
+                });
+            }
+        }
+
+        // =============================================
+        // DELETE: api/pets/DeleteCenterPet/{id}
+        // حذف حيوان أليف (مراكز التبني فقط)
+        // =============================================
+        [HttpDelete("DeleteCenterPet/{id}")]
+        [Authorize(Roles = "AdoptionCenter")]
+        public async Task<IActionResult> DeletePet(int id)
+        {
+            try
+            {
+                var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(new { Success = false, Message = "لم يتم التعرف على المستخدم." });
+
+                await _petService.DeletePetAsync(id, userId);
+
+                return Ok(new
+                {
+                    Success = true,
+                    Message = "تم حذف الحيوان الأليف بنجاح!"
+                });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, new
+                {
+                    Success = false,
+                    Message = ex.Message
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new
+                {
+                    Success = false,
+                    Message = ex.Message
+                });
+            }
         }
     }
 }
@@ -724,7 +899,7 @@ namespace PetHaven.Data
         public DbSet<Wishlist> Wishlists { get; set; }
         public DbSet<Payment> Payments { get; set; }
         public DbSet<Appointment> Appointments { get; set; }
-        public DbSet<AppointmentRequest> AppointmentRequests { get; set; }
+        public DbSet<AdoptionRequest> AdoptionRequests { get; set; }
         public DbSet<Diagnosis> Diagnoses { get; set; }
         public DbSet<PetReport> PetReports { get; set; }
         public DbSet<Vet> Vets { get; set; }
@@ -989,13 +1164,362 @@ namespace PetHaven.Data
                 .OnDelete(DeleteBehavior.Restrict);
 
             // ---------------------------------------------
-            // 2.24 PetReport (Many-to-One with Adopter)
+            // 2.24 PetReport (Many-to-One with AdoptionRequest)
             // ---------------------------------------------
             modelBuilder.Entity<PetReport>()
-                .HasOne(pr => pr.Adopter)
-                .WithMany(a => a.PetReports)
+                .HasOne(pr => pr.AdoptionRequest)
+                .WithMany(ar => ar.PetReports)
                 .HasForeignKey(pr => pr.AdoptionRequestId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // ---------------------------------------------
+            // 2.25 AdoptionRequest → Adopter (Many-to-One)
+            // ---------------------------------------------
+            modelBuilder.Entity<AdoptionRequest>()
+                .HasOne(ar => ar.Adopter)
+                .WithMany()
+                .HasForeignKey(ar => ar.AdopterId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // ---------------------------------------------
+            // 2.26 AdoptionRequest → Pet (Many-to-One)
+            // ---------------------------------------------
+            modelBuilder.Entity<AdoptionRequest>()
+                .HasOne(ar => ar.Pet)
+                .WithMany()
+                .HasForeignKey(ar => ar.PetId)
+                .OnDelete(DeleteBehavior.Restrict);
+        }
+    }
+}
+</file>
+
+<file path="Data/DatabaseSeeder.cs">
+using Microsoft.EntityFrameworkCore;
+using PetHaven.Models;
+
+namespace PetHaven.Data
+{
+    public class DatabaseSeeder
+    {
+        private readonly ApplicationDbContext _context;
+
+        public DatabaseSeeder(ApplicationDbContext context)
+        {
+            _context = context;
+        }
+
+        public async Task SeedAsync()
+        {
+            // Guard: if Pets already exist, the database has been seeded before.
+            if (await _context.Pets.AnyAsync()) return;
+
+            // =========================================================
+            // 1. Roles
+            // =========================================================
+            var roleAdopter        = await EnsureRoleAsync("Adopter");
+            var roleCenter         = await EnsureRoleAsync("AdoptionCenter");
+            var roleVet            = await EnsureRoleAsync("Vet");
+            await _context.SaveChangesAsync();
+
+            // =========================================================
+            // 2. Users  (passwords hashed with BCrypt)
+            // =========================================================
+
+            // --- Adopter user ---
+            var adopterUser = new User
+            {
+                RoleId      = roleAdopter.RoleId,
+                UserName    = "john_adopter",
+                FullName    = "John Smith",
+                Email       = "john.adopter@pethaven.com",
+                Password    = BCrypt.Net.BCrypt.HashPassword("Adopter@123"),
+                PhoneNumber = "+1-555-0101"
+            };
+
+            // --- Adoption Center user ---
+            var centerUser = new User
+            {
+                RoleId      = roleCenter.RoleId,
+                UserName    = "happy_paws_center",
+                FullName    = "Happy Paws Adoption Center",
+                Email       = "contact@happypaws.com",
+                Password    = BCrypt.Net.BCrypt.HashPassword("Center@123"),
+                PhoneNumber = "+1-555-0202"
+            };
+
+            // --- Vet user ---
+            var vetUser = new User
+            {
+                RoleId      = roleVet.RoleId,
+                UserName    = "dr_sarah_vet",
+                FullName    = "Dr. Sarah Johnson",
+                Email       = "sarah.johnson@pethaven.com",
+                Password    = BCrypt.Net.BCrypt.HashPassword("Vet@123"),
+                PhoneNumber = "+1-555-0303"
+            };
+
+            await _context.Users.AddRangeAsync(adopterUser, centerUser, vetUser);
+            await _context.SaveChangesAsync();
+
+            // =========================================================
+            // 3. Profile records (use generated UserIds)
+            // =========================================================
+
+            // Adopter profile
+            var adopterProfile = new Adopter
+            {
+                UserId           = adopterUser.UserId,
+                Address          = "123 Maple Street, Springfield, IL 62701",
+                HousingType      = "House",
+                HasPetBefore     = true,
+                ExperienceLevel  = "Intermediate",
+                MissedReportsCount = 0,
+                Balance          = 500.00m
+            };
+
+            // Cart for the adopter
+            var adopterCart = new Cart
+            {
+                UserId    = adopterUser.UserId,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            // Adoption Center profile
+            var centerProfile = new AdoptionCenter
+            {
+                UserId      = centerUser.UserId,
+                CenterName  = "Happy Paws Adoption Center",
+                Address     = "456 Oak Avenue, Chicago, IL 60601",
+                ContactInfo = "contact@happypaws.com | +1-555-0202"
+            };
+
+            // Vet profile
+            var vetProfile = new Vet
+            {
+                UserId          = vetUser.UserId,
+                FullName        = "Dr. Sarah Johnson",
+                Specialization  = "Small Animal Medicine",
+                ClinicName      = "PetCare Veterinary Clinic",
+                ClinicAddress   = "789 Elm Road, Chicago, IL 60602",
+                PhoneNumber     = "+1-555-0303",
+                Email           = "sarah.johnson@pethaven.com",
+                ExperienceYears = 8,
+                LicenseNumber   = "VET-IL-2024-00123",
+                Location_Lat    = 41.8781m,
+                Location_Lng    = -87.6298m,
+                IsVerified      = true,
+                CreatedAt       = DateTime.UtcNow
+            };
+
+            await _context.Adopters.AddAsync(adopterProfile);
+            await _context.Carts.AddAsync(adopterCart);
+            await _context.AdoptionCenters.AddAsync(centerProfile);
+            await _context.Vets.AddAsync(vetProfile);
+            await _context.SaveChangesAsync();
+
+            // =========================================================
+            // 4. Categories
+            // =========================================================
+            var catFood = new Category
+            {
+                CategoryName = "Food",
+                Description  = "Nutritious meals and treats for all pet types.",
+                ImageURL     = "https://placehold.co/200x200?text=Food"
+            };
+            var catToys = new Category
+            {
+                CategoryName = "Toys",
+                Description  = "Fun and engaging toys to keep pets active.",
+                ImageURL     = "https://placehold.co/200x200?text=Toys"
+            };
+            var catMedicine = new Category
+            {
+                CategoryName = "Medicine",
+                Description  = "Health supplements, vitamins, and medication.",
+                ImageURL     = "https://placehold.co/200x200?text=Medicine"
+            };
+            var catAccessories = new Category
+            {
+                CategoryName = "Accessories",
+                Description  = "Collars, leashes, beds, and grooming supplies.",
+                ImageURL     = "https://placehold.co/200x200?text=Accessories"
+            };
+
+            await _context.Categories.AddRangeAsync(catFood, catToys, catMedicine, catAccessories);
+            await _context.SaveChangesAsync();
+
+            // =========================================================
+            // 5. Products  (linked to center + categories)
+            // =========================================================
+            var products = new List<Product>
+            {
+                new Product
+                {
+                    CenterId      = centerProfile.CenterId,
+                    CategoryId    = catFood.CategoryId,
+                    Name          = "Premium Dog Kibble (5 kg)",
+                    Description   = "High-protein dry food formulated for adult dogs of all breeds.",
+                    ProductPrice  = 34.99m,
+                    DiscountRate  = 0.05m,
+                    StockQuantity = 80,
+                    ImageURL      = "https://placehold.co/300x300?text=DogKibble"
+                },
+                new Product
+                {
+                    CenterId      = centerProfile.CenterId,
+                    CategoryId    = catFood.CategoryId,
+                    Name          = "Gourmet Wet Cat Food (24-pack)",
+                    Description   = "Grain-free pâté with real tuna for adult cats.",
+                    ProductPrice  = 27.49m,
+                    DiscountRate  = 0.00m,
+                    StockQuantity = 60,
+                    ImageURL      = "https://placehold.co/300x300?text=CatFood"
+                },
+                new Product
+                {
+                    CenterId      = centerProfile.CenterId,
+                    CategoryId    = catToys.CategoryId,
+                    Name          = "Interactive Rope Tug Toy",
+                    Description   = "Durable braided rope toy ideal for fetch and tug-of-war.",
+                    ProductPrice  = 9.99m,
+                    DiscountRate  = 0.10m,
+                    StockQuantity = 150,
+                    ImageURL      = "https://placehold.co/300x300?text=RopeToy"
+                },
+                new Product
+                {
+                    CenterId      = centerProfile.CenterId,
+                    CategoryId    = catToys.CategoryId,
+                    Name          = "Feather Wand Cat Teaser",
+                    Description   = "Retractable wand with colourful feather attachment for cats.",
+                    ProductPrice  = 7.49m,
+                    DiscountRate  = 0.00m,
+                    StockQuantity = 120,
+                    ImageURL      = "https://placehold.co/300x300?text=Feather"
+                },
+                new Product
+                {
+                    CenterId      = centerProfile.CenterId,
+                    CategoryId    = catMedicine.CategoryId,
+                    Name          = "Omega-3 Fish Oil Supplements (90 caps)",
+                    Description   = "Supports coat health, joint function, and immune system in dogs and cats.",
+                    ProductPrice  = 19.99m,
+                    DiscountRate  = 0.00m,
+                    StockQuantity = 200,
+                    ImageURL      = "https://placehold.co/300x300?text=Omega3"
+                },
+                new Product
+                {
+                    CenterId      = centerProfile.CenterId,
+                    CategoryId    = catAccessories.CategoryId,
+                    Name          = "Adjustable Nylon Dog Collar (Medium)",
+                    Description   = "Lightweight, waterproof collar with quick-release buckle.",
+                    ProductPrice  = 12.99m,
+                    DiscountRate  = 0.15m,
+                    StockQuantity = 95,
+                    ImageURL      = "https://placehold.co/300x300?text=Collar"
+                }
+            };
+
+            await _context.Products.AddRangeAsync(products);
+            await _context.SaveChangesAsync();
+
+            // =========================================================
+            // 6. Pets  (linked to center)
+            // =========================================================
+            var pets = new List<Pet>
+            {
+                new Pet
+                {
+                    CenterId     = centerProfile.CenterId,
+                    PetName      = "Buddy",
+                    Species      = "Dog",
+                    Breed        = "Golden Retriever",
+                    Age          = 2,
+                    Gender       = "Male",
+                    HealthStatus = "Healthy",
+                    Description  = "Friendly and energetic golden retriever who loves to play fetch.",
+                    ImageURL     = "https://placehold.co/400x400?text=Buddy"
+                },
+                new Pet
+                {
+                    CenterId     = centerProfile.CenterId,
+                    PetName      = "Luna",
+                    Species      = "Cat",
+                    Breed        = "Siamese",
+                    Age          = 3,
+                    Gender       = "Female",
+                    HealthStatus = "Healthy",
+                    Description  = "Elegant Siamese cat with striking blue eyes. Very affectionate.",
+                    ImageURL     = "https://placehold.co/400x400?text=Luna"
+                },
+                new Pet
+                {
+                    CenterId     = centerProfile.CenterId,
+                    PetName      = "Max",
+                    Species      = "Dog",
+                    Breed        = "German Shepherd",
+                    Age          = 4,
+                    Gender       = "Male",
+                    HealthStatus = "Healthy",
+                    Description  = "Intelligent and loyal German Shepherd, well-trained and great with kids.",
+                    ImageURL     = "https://placehold.co/400x400?text=Max"
+                },
+                new Pet
+                {
+                    CenterId     = centerProfile.CenterId,
+                    PetName      = "Bella",
+                    Species      = "Cat",
+                    Breed        = "Persian",
+                    Age          = 1,
+                    Gender       = "Female",
+                    HealthStatus = "Healthy",
+                    Description  = "Fluffy Persian kitten with a playful personality.",
+                    ImageURL     = "https://placehold.co/400x400?text=Bella"
+                },
+                new Pet
+                {
+                    CenterId     = centerProfile.CenterId,
+                    PetName      = "Charlie",
+                    Species      = "Dog",
+                    Breed        = "Beagle",
+                    Age          = 5,
+                    Gender       = "Male",
+                    HealthStatus = "Healthy",
+                    Description  = "Curious and gentle Beagle, great with families and other dogs.",
+                    ImageURL     = "https://placehold.co/400x400?text=Charlie"
+                },
+                new Pet
+                {
+                    CenterId     = centerProfile.CenterId,
+                    PetName      = "Mango",
+                    Species      = "Rabbit",
+                    Breed        = "Holland Lop",
+                    Age          = 1,
+                    Gender       = "Male",
+                    HealthStatus = "Healthy",
+                    Description  = "Adorable Holland Lop rabbit with floppy ears and a calm temperament.",
+                    ImageURL     = "https://placehold.co/400x400?text=Mango"
+                }
+            };
+
+            await _context.Pets.AddRangeAsync(pets);
+            await _context.SaveChangesAsync();
+        }
+
+        // =========================================================
+        // Helper: ensure a Role exists, return it (create if missing)
+        // =========================================================
+        private async Task<Role> EnsureRoleAsync(string roleName)
+        {
+            var role = await _context.Roles.FirstOrDefaultAsync(r => r.RoleName == roleName);
+            if (role == null)
+            {
+                role = new Role { RoleName = roleName };
+                await _context.Roles.AddAsync(role);
+            }
+            return role;
         }
     }
 }
@@ -1046,6 +1570,39 @@ namespace PetHaven.DTOs
 }
 </file>
 
+<file path="DTOs/CreatePetDto.cs">
+using System.ComponentModel.DataAnnotations;
+
+namespace PetHaven.DTOs
+{
+    public class CreatePetDto
+    {
+        [Required]
+        [MaxLength(100)]
+        public string Name { get; set; } = string.Empty;
+
+        [MaxLength(50)]
+        public string? Species { get; set; }
+
+        [MaxLength(50)]
+        public string? Breed { get; set; }
+
+        public int? Age { get; set; }
+
+        [MaxLength(20)]
+        public string? Gender { get; set; }
+
+        public string? Description { get; set; }
+
+        [MaxLength(50)]
+        public string? HealthStatus { get; set; }
+
+        [MaxLength(500)]
+        public string? ImageUrl { get; set; }
+    }
+}
+</file>
+
 <file path="DTOs/LoginDto.cs">
 using System.ComponentModel.DataAnnotations;
 
@@ -1063,6 +1620,25 @@ namespace PetHaven.DTOs
 }
 </file>
 
+<file path="DTOs/PetResponseDto.cs">
+namespace PetHaven.DTOs
+{
+    public class PetResponseDto
+    {
+        public int PetId { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string? Species { get; set; }
+        public string? Breed { get; set; }
+        public int? Age { get; set; }
+        public string? Gender { get; set; }
+        public string? Description { get; set; }
+        public string? HealthStatus { get; set; }
+        public string? ImageUrl { get; set; }
+        public string CenterName { get; set; } = string.Empty;
+    }
+}
+</file>
+
 <file path="DTOs/RegisterDto.cs">
 using System.ComponentModel.DataAnnotations;
 
@@ -1071,12 +1647,15 @@ namespace PetHaven.DTOs
     public class RegisterDto
     {
         [Required]
+        [MaxLength(200)]
+        public string FullName { get; set; } = string.Empty;
+
+        [Required]
         [MaxLength(100)]
         public string UserName { get; set; } = string.Empty;
 
-        [Required]
-        [MaxLength(200)]
-        public string FullName { get; set; } = string.Empty;
+        [MaxLength(50)]
+        public string? PhoneNumber { get; set; }
 
         [Required]
         [EmailAddress]
@@ -1087,8 +1666,32 @@ namespace PetHaven.DTOs
         [MinLength(6)]
         public string Password { get; set; } = string.Empty;
 
+        [Required]
+        [MaxLength(100)]
+        public string Role { get; set; } = string.Empty;
+    }
+}
+</file>
+
+<file path="DTOs/UpdatePetDto.cs">
+using System.ComponentModel.DataAnnotations;
+
+namespace PetHaven.DTOs
+{
+    public class UpdatePetDto
+    {
+        [MaxLength(100)]
+        public string? Name { get; set; }
+
+        public int? Age { get; set; }
+
         [MaxLength(50)]
-        public string? PhoneNumber { get; set; }
+        public string? HealthStatus { get; set; }
+
+        public string? Description { get; set; }
+
+        [MaxLength(500)]
+        public string? ImageUrl { get; set; }
     }
 }
 </file>
@@ -2976,12 +3579,45 @@ namespace PetHaven.Migrations
 }
 </file>
 
-<file path="Migrations/ApplicationDbContextModelSnapshot.cs">
+<file path="Migrations/20260701125852_AddScoringAndNotesToAdoption.cs">
+using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace PetHaven.Migrations
+{
+    /// <inheritdoc />
+    public partial class AddScoringAndNotesToAdoption : Migration
+    {
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.AddColumn<int>(
+                name: "FreeHoursPerDay",
+                table: "Adopters",
+                type: "int",
+                nullable: false,
+                defaultValue: 0);
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropColumn(
+                name: "FreeHoursPerDay",
+                table: "Adopters");
+        }
+    }
+}
+</file>
+
+<file path="Migrations/20260701125852_AddScoringAndNotesToAdoption.Designer.cs">
 // <auto-generated />
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PetHaven.Data;
 
@@ -2990,9 +3626,11 @@ using PetHaven.Data;
 namespace PetHaven.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260701125852_AddScoringAndNotesToAdoption")]
+    partial class AddScoringAndNotesToAdoption
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -3020,6 +3658,9 @@ namespace PetHaven.Migrations
                     b.Property<string>("ExperienceLevel")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("FreeHoursPerDay")
+                        .HasColumnType("int");
 
                     b.Property<bool>("HasPetBefore")
                         .HasColumnType("bit");
@@ -4056,6 +4697,2397 @@ namespace PetHaven.Migrations
 }
 </file>
 
+<file path="Migrations/20260701144125_FixAdoptionAndRemoveAppointmentRequest.cs">
+using System;
+using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace PetHaven.Migrations
+{
+    /// <inheritdoc />
+    public partial class FixAdoptionAndRemoveAppointmentRequest : Migration
+    {
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropForeignKey(
+                name: "FK_PetReports_Adopters_AdoptionRequestId",
+                table: "PetReports");
+
+            migrationBuilder.DropTable(
+                name: "AppointmentRequests");
+
+            migrationBuilder.AddColumn<int>(
+                name: "AdopterId",
+                table: "PetReports",
+                type: "int",
+                nullable: true);
+
+            migrationBuilder.CreateTable(
+                name: "AdoptionRequests",
+                columns: table => new
+                {
+                    AdoptionRequestId = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    AdopterId = table.Column<int>(type: "int", nullable: false),
+                    PetId = table.Column<int>(type: "int", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    Score = table.Column<int>(type: "int", nullable: false),
+                    CenterNote = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_AdoptionRequests", x => x.AdoptionRequestId);
+                    table.ForeignKey(
+                        name: "FK_AdoptionRequests_Adopters_AdopterId",
+                        column: x => x.AdopterId,
+                        principalTable: "Adopters",
+                        principalColumn: "AdopterId",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_AdoptionRequests_Pets_PetId",
+                        column: x => x.PetId,
+                        principalTable: "Pets",
+                        principalColumn: "PetId",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PetReports_AdopterId",
+                table: "PetReports",
+                column: "AdopterId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AdoptionRequests_AdopterId",
+                table: "AdoptionRequests",
+                column: "AdopterId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AdoptionRequests_PetId",
+                table: "AdoptionRequests",
+                column: "PetId");
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_PetReports_Adopters_AdopterId",
+                table: "PetReports",
+                column: "AdopterId",
+                principalTable: "Adopters",
+                principalColumn: "AdopterId");
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_PetReports_AdoptionRequests_AdoptionRequestId",
+                table: "PetReports",
+                column: "AdoptionRequestId",
+                principalTable: "AdoptionRequests",
+                principalColumn: "AdoptionRequestId",
+                onDelete: ReferentialAction.Cascade);
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropForeignKey(
+                name: "FK_PetReports_Adopters_AdopterId",
+                table: "PetReports");
+
+            migrationBuilder.DropForeignKey(
+                name: "FK_PetReports_AdoptionRequests_AdoptionRequestId",
+                table: "PetReports");
+
+            migrationBuilder.DropTable(
+                name: "AdoptionRequests");
+
+            migrationBuilder.DropIndex(
+                name: "IX_PetReports_AdopterId",
+                table: "PetReports");
+
+            migrationBuilder.DropColumn(
+                name: "AdopterId",
+                table: "PetReports");
+
+            migrationBuilder.CreateTable(
+                name: "AppointmentRequests",
+                columns: table => new
+                {
+                    AppointmentRequestId = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    HealthStatus = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
+                    ImageURL = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    Notes = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_AppointmentRequests", x => x.AppointmentRequestId);
+                });
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_PetReports_Adopters_AdoptionRequestId",
+                table: "PetReports",
+                column: "AdoptionRequestId",
+                principalTable: "Adopters",
+                principalColumn: "AdopterId",
+                onDelete: ReferentialAction.Restrict);
+        }
+    }
+}
+</file>
+
+<file path="Migrations/20260701144125_FixAdoptionAndRemoveAppointmentRequest.Designer.cs">
+// <auto-generated />
+using System;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using PetHaven.Data;
+
+#nullable disable
+
+namespace PetHaven.Migrations
+{
+    [DbContext(typeof(ApplicationDbContext))]
+    [Migration("20260701144125_FixAdoptionAndRemoveAppointmentRequest")]
+    partial class FixAdoptionAndRemoveAppointmentRequest
+    {
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
+        {
+#pragma warning disable 612, 618
+            modelBuilder
+                .HasAnnotation("ProductVersion", "8.0.28")
+                .HasAnnotation("Relational:MaxIdentifierLength", 128);
+
+            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+
+            modelBuilder.Entity("PetHaven.Models.Adopter", b =>
+                {
+                    b.Property<int>("AdopterId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("AdopterId"));
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<decimal>("Balance")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("ExperienceLevel")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("FreeHoursPerDay")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("HasPetBefore")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("HousingType")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("LastReportDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("MissedReportsCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("AdopterId");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("Adopters");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.AdoptionCenter", b =>
+                {
+                    b.Property<int>("CenterId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("CenterId"));
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("CenterName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ContactInfo")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("CenterId");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("AdoptionCenters");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.AdoptionRequest", b =>
+                {
+                    b.Property<int>("AdoptionRequestId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("AdoptionRequestId"));
+
+                    b.Property<int>("AdopterId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CenterNote")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("PetId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Score")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("AdoptionRequestId");
+
+                    b.HasIndex("AdopterId");
+
+                    b.HasIndex("PetId");
+
+                    b.ToTable("AdoptionRequests");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Appointment", b =>
+                {
+                    b.Property<int>("AppointmentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("AppointmentId"));
+
+                    b.Property<int>("AdopterId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("AppointmentDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("PetId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Status")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("AppointmentId");
+
+                    b.HasIndex("AdopterId");
+
+                    b.HasIndex("PetId");
+
+                    b.ToTable("Appointments");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Blacklist", b =>
+                {
+                    b.Property<int>("BlacklistId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("BlacklistId"));
+
+                    b.Property<int>("AdopterId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("BlockedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("CenterId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("BlacklistId");
+
+                    b.HasIndex("AdopterId");
+
+                    b.HasIndex("CenterId");
+
+                    b.ToTable("Blacklists");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Cart", b =>
+                {
+                    b.Property<int>("CartId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("CartId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("CartId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Carts");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.CartItem", b =>
+                {
+                    b.Property<int>("CartItemId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("CartItemId"));
+
+                    b.Property<int>("CartId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.HasKey("CartItemId");
+
+                    b.HasIndex("CartId");
+
+                    b.HasIndex("ProductId");
+
+                    b.ToTable("CartItems");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Category", b =>
+                {
+                    b.Property<int>("CategoryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("CategoryId"));
+
+                    b.Property<string>("CategoryName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ImageURL")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("CategoryId");
+
+                    b.ToTable("Categories");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Diagnosis", b =>
+                {
+                    b.Property<int>("DiagnosisId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("DiagnosisId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("PetId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Result")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Symptoms")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("DiagnosisId");
+
+                    b.HasIndex("PetId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Diagnoses");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Notification", b =>
+                {
+                    b.Property<int>("NotificationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("NotificationId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Type")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("NotificationId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Notifications");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Order", b =>
+                {
+                    b.Property<int>("OrderId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("OrderId"));
+
+                    b.Property<DateTime>("OrderDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<decimal>("TotalPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("OrderId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Orders");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.OrderItem", b =>
+                {
+                    b.Property<int>("OrderItemId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("OrderItemId"));
+
+                    b.Property<int>("OrderId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("PriceAtPurchase")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("OrderItemId");
+
+                    b.HasIndex("OrderId");
+
+                    b.HasIndex("ProductId");
+
+                    b.ToTable("OrderItems");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Payment", b =>
+                {
+                    b.Property<int>("PaymentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("PaymentId"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("OrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("PaymentDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PaymentMethod")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("PaymentStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("PaymentId");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique();
+
+                    b.ToTable("Payments");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Pet", b =>
+                {
+                    b.Property<int>("PetId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("PetId"));
+
+                    b.Property<int?>("Age")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Breed")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("CenterId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Gender")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("HealthStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ImageURL")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("PetName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Species")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("PetId");
+
+                    b.HasIndex("CenterId");
+
+                    b.ToTable("Pets");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.PetReport", b =>
+                {
+                    b.Property<int>("ReportId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ReportId"));
+
+                    b.Property<int?>("AdopterId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("AdoptionRequestId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("HealthStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ImageURL")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("ReportId");
+
+                    b.HasIndex("AdopterId");
+
+                    b.HasIndex("AdoptionRequestId");
+
+                    b.ToTable("PetReports");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Product", b =>
+                {
+                    b.Property<int>("ProductId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ProductId"));
+
+                    b.Property<int>("CategoryId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CenterId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("DiscountRate")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("ImageURL")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<decimal>("ProductPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("StockQuantity")
+                        .HasColumnType("int");
+
+                    b.HasKey("ProductId");
+
+                    b.HasIndex("CategoryId");
+
+                    b.HasIndex("CenterId");
+
+                    b.ToTable("Products");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Rating", b =>
+                {
+                    b.Property<int>("RatingId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("RatingId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReviewText")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("StarsCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TargetId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TargetType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("RatingId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Ratings");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Role", b =>
+                {
+                    b.Property<int>("RoleId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("RoleId"));
+
+                    b.Property<string>("RoleName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("RoleId");
+
+                    b.ToTable("Roles");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.User", b =>
+                {
+                    b.Property<int>("UserId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("UserId"));
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Password")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PhoneNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("RoleId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("UserId");
+
+                    b.HasIndex("RoleId");
+
+                    b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Vet", b =>
+                {
+                    b.Property<int>("VetId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("VetId"));
+
+                    b.Property<string>("ClinicAddress")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ClinicName")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int?>("ExperienceYears")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsVerified")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LicenseNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<decimal?>("Location_Lat")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("decimal(18,8)");
+
+                    b.Property<decimal?>("Location_Lng")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("decimal(18,8)");
+
+                    b.Property<string>("PhoneNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Specialization")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("VetId");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("Vets");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Wishlist", b =>
+                {
+                    b.Property<int>("WishlistId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("WishlistId"));
+
+                    b.Property<DateTime>("AddedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("WishlistId");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Wishlists");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Adopter", b =>
+                {
+                    b.HasOne("PetHaven.Models.User", "User")
+                        .WithOne("Adopter")
+                        .HasForeignKey("PetHaven.Models.Adopter", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.AdoptionCenter", b =>
+                {
+                    b.HasOne("PetHaven.Models.User", "User")
+                        .WithOne("AdoptionCenter")
+                        .HasForeignKey("PetHaven.Models.AdoptionCenter", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.AdoptionRequest", b =>
+                {
+                    b.HasOne("PetHaven.Models.Adopter", "Adopter")
+                        .WithMany()
+                        .HasForeignKey("AdopterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PetHaven.Models.Pet", "Pet")
+                        .WithMany()
+                        .HasForeignKey("PetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Adopter");
+
+                    b.Navigation("Pet");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Appointment", b =>
+                {
+                    b.HasOne("PetHaven.Models.Adopter", "Adopter")
+                        .WithMany("Appointments")
+                        .HasForeignKey("AdopterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PetHaven.Models.Pet", "Pet")
+                        .WithMany("Appointments")
+                        .HasForeignKey("PetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Adopter");
+
+                    b.Navigation("Pet");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Blacklist", b =>
+                {
+                    b.HasOne("PetHaven.Models.Adopter", "Adopter")
+                        .WithMany("Blacklists")
+                        .HasForeignKey("AdopterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PetHaven.Models.AdoptionCenter", "Center")
+                        .WithMany("Blacklists")
+                        .HasForeignKey("CenterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Adopter");
+
+                    b.Navigation("Center");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Cart", b =>
+                {
+                    b.HasOne("PetHaven.Models.User", "User")
+                        .WithMany("Carts")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.CartItem", b =>
+                {
+                    b.HasOne("PetHaven.Models.Cart", "Cart")
+                        .WithMany("CartItems")
+                        .HasForeignKey("CartId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PetHaven.Models.Product", "Product")
+                        .WithMany("CartItems")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Cart");
+
+                    b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Diagnosis", b =>
+                {
+                    b.HasOne("PetHaven.Models.Pet", "Pet")
+                        .WithMany("Diagnoses")
+                        .HasForeignKey("PetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PetHaven.Models.User", "User")
+                        .WithMany("Diagnoses")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Pet");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Notification", b =>
+                {
+                    b.HasOne("PetHaven.Models.User", "User")
+                        .WithMany("Notifications")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Order", b =>
+                {
+                    b.HasOne("PetHaven.Models.User", "User")
+                        .WithMany("Orders")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.OrderItem", b =>
+                {
+                    b.HasOne("PetHaven.Models.Order", "Order")
+                        .WithMany("OrderItems")
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PetHaven.Models.Product", "Product")
+                        .WithMany("OrderItems")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Order");
+
+                    b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Payment", b =>
+                {
+                    b.HasOne("PetHaven.Models.Order", "Order")
+                        .WithOne("Payment")
+                        .HasForeignKey("PetHaven.Models.Payment", "OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Order");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Pet", b =>
+                {
+                    b.HasOne("PetHaven.Models.AdoptionCenter", "Center")
+                        .WithMany("Pets")
+                        .HasForeignKey("CenterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Center");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.PetReport", b =>
+                {
+                    b.HasOne("PetHaven.Models.Adopter", null)
+                        .WithMany("PetReports")
+                        .HasForeignKey("AdopterId");
+
+                    b.HasOne("PetHaven.Models.AdoptionRequest", "AdoptionRequest")
+                        .WithMany("PetReports")
+                        .HasForeignKey("AdoptionRequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AdoptionRequest");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Product", b =>
+                {
+                    b.HasOne("PetHaven.Models.Category", "Category")
+                        .WithMany("Products")
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PetHaven.Models.AdoptionCenter", "Center")
+                        .WithMany("Products")
+                        .HasForeignKey("CenterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Category");
+
+                    b.Navigation("Center");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Rating", b =>
+                {
+                    b.HasOne("PetHaven.Models.User", "User")
+                        .WithMany("Ratings")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.User", b =>
+                {
+                    b.HasOne("PetHaven.Models.Role", "Role")
+                        .WithMany("Users")
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Role");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Vet", b =>
+                {
+                    b.HasOne("PetHaven.Models.User", "User")
+                        .WithOne("Vet")
+                        .HasForeignKey("PetHaven.Models.Vet", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Wishlist", b =>
+                {
+                    b.HasOne("PetHaven.Models.Product", "Product")
+                        .WithMany("Wishlists")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PetHaven.Models.User", "User")
+                        .WithMany("Wishlists")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Adopter", b =>
+                {
+                    b.Navigation("Appointments");
+
+                    b.Navigation("Blacklists");
+
+                    b.Navigation("PetReports");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.AdoptionCenter", b =>
+                {
+                    b.Navigation("Blacklists");
+
+                    b.Navigation("Pets");
+
+                    b.Navigation("Products");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.AdoptionRequest", b =>
+                {
+                    b.Navigation("PetReports");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Cart", b =>
+                {
+                    b.Navigation("CartItems");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Category", b =>
+                {
+                    b.Navigation("Products");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Order", b =>
+                {
+                    b.Navigation("OrderItems");
+
+                    b.Navigation("Payment");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Pet", b =>
+                {
+                    b.Navigation("Appointments");
+
+                    b.Navigation("Diagnoses");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Product", b =>
+                {
+                    b.Navigation("CartItems");
+
+                    b.Navigation("OrderItems");
+
+                    b.Navigation("Wishlists");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Role", b =>
+                {
+                    b.Navigation("Users");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.User", b =>
+                {
+                    b.Navigation("Adopter");
+
+                    b.Navigation("AdoptionCenter");
+
+                    b.Navigation("Carts");
+
+                    b.Navigation("Diagnoses");
+
+                    b.Navigation("Notifications");
+
+                    b.Navigation("Orders");
+
+                    b.Navigation("Ratings");
+
+                    b.Navigation("Vet");
+
+                    b.Navigation("Wishlists");
+                });
+#pragma warning restore 612, 618
+        }
+    }
+}
+</file>
+
+<file path="Migrations/ApplicationDbContextModelSnapshot.cs">
+// <auto-generated />
+using System;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using PetHaven.Data;
+
+#nullable disable
+
+namespace PetHaven.Migrations
+{
+    [DbContext(typeof(ApplicationDbContext))]
+    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    {
+        protected override void BuildModel(ModelBuilder modelBuilder)
+        {
+#pragma warning disable 612, 618
+            modelBuilder
+                .HasAnnotation("ProductVersion", "8.0.28")
+                .HasAnnotation("Relational:MaxIdentifierLength", 128);
+
+            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+
+            modelBuilder.Entity("PetHaven.Models.Adopter", b =>
+                {
+                    b.Property<int>("AdopterId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("AdopterId"));
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<decimal>("Balance")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("ExperienceLevel")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("FreeHoursPerDay")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("HasPetBefore")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("HousingType")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("LastReportDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("MissedReportsCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("AdopterId");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("Adopters");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.AdoptionCenter", b =>
+                {
+                    b.Property<int>("CenterId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("CenterId"));
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("CenterName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ContactInfo")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("CenterId");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("AdoptionCenters");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.AdoptionRequest", b =>
+                {
+                    b.Property<int>("AdoptionRequestId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("AdoptionRequestId"));
+
+                    b.Property<int>("AdopterId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CenterNote")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("PetId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Score")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("AdoptionRequestId");
+
+                    b.HasIndex("AdopterId");
+
+                    b.HasIndex("PetId");
+
+                    b.ToTable("AdoptionRequests");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Appointment", b =>
+                {
+                    b.Property<int>("AppointmentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("AppointmentId"));
+
+                    b.Property<int>("AdopterId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("AppointmentDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("PetId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Status")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("AppointmentId");
+
+                    b.HasIndex("AdopterId");
+
+                    b.HasIndex("PetId");
+
+                    b.ToTable("Appointments");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Blacklist", b =>
+                {
+                    b.Property<int>("BlacklistId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("BlacklistId"));
+
+                    b.Property<int>("AdopterId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("BlockedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("CenterId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("BlacklistId");
+
+                    b.HasIndex("AdopterId");
+
+                    b.HasIndex("CenterId");
+
+                    b.ToTable("Blacklists");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Cart", b =>
+                {
+                    b.Property<int>("CartId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("CartId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("CartId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Carts");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.CartItem", b =>
+                {
+                    b.Property<int>("CartItemId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("CartItemId"));
+
+                    b.Property<int>("CartId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.HasKey("CartItemId");
+
+                    b.HasIndex("CartId");
+
+                    b.HasIndex("ProductId");
+
+                    b.ToTable("CartItems");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Category", b =>
+                {
+                    b.Property<int>("CategoryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("CategoryId"));
+
+                    b.Property<string>("CategoryName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ImageURL")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("CategoryId");
+
+                    b.ToTable("Categories");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Diagnosis", b =>
+                {
+                    b.Property<int>("DiagnosisId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("DiagnosisId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("PetId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Result")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Symptoms")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("DiagnosisId");
+
+                    b.HasIndex("PetId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Diagnoses");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Notification", b =>
+                {
+                    b.Property<int>("NotificationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("NotificationId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Type")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("NotificationId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Notifications");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Order", b =>
+                {
+                    b.Property<int>("OrderId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("OrderId"));
+
+                    b.Property<DateTime>("OrderDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<decimal>("TotalPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("OrderId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Orders");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.OrderItem", b =>
+                {
+                    b.Property<int>("OrderItemId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("OrderItemId"));
+
+                    b.Property<int>("OrderId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("PriceAtPurchase")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("OrderItemId");
+
+                    b.HasIndex("OrderId");
+
+                    b.HasIndex("ProductId");
+
+                    b.ToTable("OrderItems");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Payment", b =>
+                {
+                    b.Property<int>("PaymentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("PaymentId"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("OrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("PaymentDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PaymentMethod")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("PaymentStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("PaymentId");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique();
+
+                    b.ToTable("Payments");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Pet", b =>
+                {
+                    b.Property<int>("PetId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("PetId"));
+
+                    b.Property<int?>("Age")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Breed")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("CenterId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Gender")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("HealthStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ImageURL")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("PetName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Species")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("PetId");
+
+                    b.HasIndex("CenterId");
+
+                    b.ToTable("Pets");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.PetReport", b =>
+                {
+                    b.Property<int>("ReportId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ReportId"));
+
+                    b.Property<int?>("AdopterId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("AdoptionRequestId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("HealthStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ImageURL")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("ReportId");
+
+                    b.HasIndex("AdopterId");
+
+                    b.HasIndex("AdoptionRequestId");
+
+                    b.ToTable("PetReports");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Product", b =>
+                {
+                    b.Property<int>("ProductId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ProductId"));
+
+                    b.Property<int>("CategoryId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CenterId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("DiscountRate")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("ImageURL")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<decimal>("ProductPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("StockQuantity")
+                        .HasColumnType("int");
+
+                    b.HasKey("ProductId");
+
+                    b.HasIndex("CategoryId");
+
+                    b.HasIndex("CenterId");
+
+                    b.ToTable("Products");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Rating", b =>
+                {
+                    b.Property<int>("RatingId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("RatingId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReviewText")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("StarsCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TargetId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TargetType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("RatingId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Ratings");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Role", b =>
+                {
+                    b.Property<int>("RoleId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("RoleId"));
+
+                    b.Property<string>("RoleName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("RoleId");
+
+                    b.ToTable("Roles");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.User", b =>
+                {
+                    b.Property<int>("UserId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("UserId"));
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Password")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PhoneNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("RoleId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("UserId");
+
+                    b.HasIndex("RoleId");
+
+                    b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Vet", b =>
+                {
+                    b.Property<int>("VetId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("VetId"));
+
+                    b.Property<string>("ClinicAddress")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ClinicName")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int?>("ExperienceYears")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsVerified")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LicenseNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<decimal?>("Location_Lat")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("decimal(18,8)");
+
+                    b.Property<decimal?>("Location_Lng")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("decimal(18,8)");
+
+                    b.Property<string>("PhoneNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Specialization")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("VetId");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("Vets");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Wishlist", b =>
+                {
+                    b.Property<int>("WishlistId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("WishlistId"));
+
+                    b.Property<DateTime>("AddedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("WishlistId");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Wishlists");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Adopter", b =>
+                {
+                    b.HasOne("PetHaven.Models.User", "User")
+                        .WithOne("Adopter")
+                        .HasForeignKey("PetHaven.Models.Adopter", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.AdoptionCenter", b =>
+                {
+                    b.HasOne("PetHaven.Models.User", "User")
+                        .WithOne("AdoptionCenter")
+                        .HasForeignKey("PetHaven.Models.AdoptionCenter", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.AdoptionRequest", b =>
+                {
+                    b.HasOne("PetHaven.Models.Adopter", "Adopter")
+                        .WithMany()
+                        .HasForeignKey("AdopterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PetHaven.Models.Pet", "Pet")
+                        .WithMany()
+                        .HasForeignKey("PetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Adopter");
+
+                    b.Navigation("Pet");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Appointment", b =>
+                {
+                    b.HasOne("PetHaven.Models.Adopter", "Adopter")
+                        .WithMany("Appointments")
+                        .HasForeignKey("AdopterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PetHaven.Models.Pet", "Pet")
+                        .WithMany("Appointments")
+                        .HasForeignKey("PetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Adopter");
+
+                    b.Navigation("Pet");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Blacklist", b =>
+                {
+                    b.HasOne("PetHaven.Models.Adopter", "Adopter")
+                        .WithMany("Blacklists")
+                        .HasForeignKey("AdopterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PetHaven.Models.AdoptionCenter", "Center")
+                        .WithMany("Blacklists")
+                        .HasForeignKey("CenterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Adopter");
+
+                    b.Navigation("Center");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Cart", b =>
+                {
+                    b.HasOne("PetHaven.Models.User", "User")
+                        .WithMany("Carts")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.CartItem", b =>
+                {
+                    b.HasOne("PetHaven.Models.Cart", "Cart")
+                        .WithMany("CartItems")
+                        .HasForeignKey("CartId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PetHaven.Models.Product", "Product")
+                        .WithMany("CartItems")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Cart");
+
+                    b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Diagnosis", b =>
+                {
+                    b.HasOne("PetHaven.Models.Pet", "Pet")
+                        .WithMany("Diagnoses")
+                        .HasForeignKey("PetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PetHaven.Models.User", "User")
+                        .WithMany("Diagnoses")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Pet");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Notification", b =>
+                {
+                    b.HasOne("PetHaven.Models.User", "User")
+                        .WithMany("Notifications")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Order", b =>
+                {
+                    b.HasOne("PetHaven.Models.User", "User")
+                        .WithMany("Orders")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.OrderItem", b =>
+                {
+                    b.HasOne("PetHaven.Models.Order", "Order")
+                        .WithMany("OrderItems")
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PetHaven.Models.Product", "Product")
+                        .WithMany("OrderItems")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Order");
+
+                    b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Payment", b =>
+                {
+                    b.HasOne("PetHaven.Models.Order", "Order")
+                        .WithOne("Payment")
+                        .HasForeignKey("PetHaven.Models.Payment", "OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Order");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Pet", b =>
+                {
+                    b.HasOne("PetHaven.Models.AdoptionCenter", "Center")
+                        .WithMany("Pets")
+                        .HasForeignKey("CenterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Center");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.PetReport", b =>
+                {
+                    b.HasOne("PetHaven.Models.Adopter", null)
+                        .WithMany("PetReports")
+                        .HasForeignKey("AdopterId");
+
+                    b.HasOne("PetHaven.Models.AdoptionRequest", "AdoptionRequest")
+                        .WithMany("PetReports")
+                        .HasForeignKey("AdoptionRequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AdoptionRequest");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Product", b =>
+                {
+                    b.HasOne("PetHaven.Models.Category", "Category")
+                        .WithMany("Products")
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PetHaven.Models.AdoptionCenter", "Center")
+                        .WithMany("Products")
+                        .HasForeignKey("CenterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Category");
+
+                    b.Navigation("Center");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Rating", b =>
+                {
+                    b.HasOne("PetHaven.Models.User", "User")
+                        .WithMany("Ratings")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.User", b =>
+                {
+                    b.HasOne("PetHaven.Models.Role", "Role")
+                        .WithMany("Users")
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Role");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Vet", b =>
+                {
+                    b.HasOne("PetHaven.Models.User", "User")
+                        .WithOne("Vet")
+                        .HasForeignKey("PetHaven.Models.Vet", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Wishlist", b =>
+                {
+                    b.HasOne("PetHaven.Models.Product", "Product")
+                        .WithMany("Wishlists")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PetHaven.Models.User", "User")
+                        .WithMany("Wishlists")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Adopter", b =>
+                {
+                    b.Navigation("Appointments");
+
+                    b.Navigation("Blacklists");
+
+                    b.Navigation("PetReports");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.AdoptionCenter", b =>
+                {
+                    b.Navigation("Blacklists");
+
+                    b.Navigation("Pets");
+
+                    b.Navigation("Products");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.AdoptionRequest", b =>
+                {
+                    b.Navigation("PetReports");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Cart", b =>
+                {
+                    b.Navigation("CartItems");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Category", b =>
+                {
+                    b.Navigation("Products");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Order", b =>
+                {
+                    b.Navigation("OrderItems");
+
+                    b.Navigation("Payment");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Pet", b =>
+                {
+                    b.Navigation("Appointments");
+
+                    b.Navigation("Diagnoses");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Product", b =>
+                {
+                    b.Navigation("CartItems");
+
+                    b.Navigation("OrderItems");
+
+                    b.Navigation("Wishlists");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.Role", b =>
+                {
+                    b.Navigation("Users");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.User", b =>
+                {
+                    b.Navigation("Adopter");
+
+                    b.Navigation("AdoptionCenter");
+
+                    b.Navigation("Carts");
+
+                    b.Navigation("Diagnoses");
+
+                    b.Navigation("Notifications");
+
+                    b.Navigation("Orders");
+
+                    b.Navigation("Ratings");
+
+                    b.Navigation("Vet");
+
+                    b.Navigation("Wishlists");
+                });
+#pragma warning restore 612, 618
+        }
+    }
+}
+</file>
+
 <file path="Models/Adopter.cs">
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -4082,6 +7114,8 @@ namespace PetHaven.Models
         public string? ExperienceLevel { get; set; }
 
         public int MissedReportsCount { get; set; }
+
+        public int FreeHoursPerDay { get; set; }
 
         public DateTime? LastReportDate { get; set; }
 
@@ -4140,6 +7174,44 @@ namespace PetHaven.Models
 }
 </file>
 
+<file path="Models/AdoptionRequest.cs">
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace PetHaven.Models
+{
+    public class AdoptionRequest
+    {
+        [Key]
+        public int AdoptionRequestId { get; set; }
+
+        [Required]
+        public int AdopterId { get; set; }
+
+        [Required]
+        public int PetId { get; set; }
+
+        [MaxLength(50)]
+        public string? Status { get; set; }
+
+        public DateTime CreatedAt { get; set; }
+
+        public int Score { get; set; }  // لحساب الاولوية 
+
+        public string? CenterNote { get; set; }  // عندما يرفض المركز طلباً، يمكنه كتابة سبب الرفض هنا (مثلاً: "نعتذر، ساعات تفرغك لا تناسب هذا النوع من الكلاب")
+
+        // Navigation properties
+        [ForeignKey("AdopterId")]
+        public virtual Adopter Adopter { get; set; } = null!;
+
+        [ForeignKey("PetId")]
+        public virtual Pet Pet { get; set; } = null!;
+
+        public virtual ICollection<PetReport> PetReports { get; set; } = new List<PetReport>();
+    }
+}
+</file>
+
 <file path="Models/Appointment.cs">
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -4171,29 +7243,6 @@ namespace PetHaven.Models
         [ForeignKey("PetId")]
         public virtual Pet? Pet { get; set; }
 
-    }
-}
-</file>
-
-<file path="Models/AppointmentRequest.cs">
-using System.ComponentModel.DataAnnotations;
-
-namespace PetHaven.Models
-{
-    public class AppointmentRequest
-    {
-        [Key]
-        public int AppointmentRequestId { get; set; }
-
-        [MaxLength(500)]
-        public string? ImageURL { get; set; }
-
-        [MaxLength(50)]
-        public string? HealthStatus { get; set; }
-
-        public string? Notes { get; set; }
-
-        public DateTime CreatedAt { get; set; }
     }
 }
 </file>
@@ -4557,7 +7606,7 @@ namespace PetHaven.Models
 
         // العلاقات
         [ForeignKey("AdoptionRequestId")]
-        public virtual Adopter? Adopter { get; set; }
+        public virtual AdoptionRequest AdoptionRequest { get; set; } = null!;
     }
 }
 </file>
@@ -4809,6 +7858,7 @@ namespace PetHaven.Models
 
   <ItemGroup>
     <PackageReference Include="BCrypt.Net-Next" Version="4.2.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.28" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.28" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.9">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -4859,8 +7909,13 @@ EndGlobal
 
 <file path="Program.cs">
 using Microsoft.EntityFrameworkCore;
-using PetHaven.Data;  // Exporting DbContext
-
+using Microsoft.OpenApi.Models;
+using PetHaven.Data;
+using PetHaven.Services;
+using PetHaven.Helpers;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -4868,7 +7923,33 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+//  To allow swagger to take Tokens and enabel Authoriz button
+builder.Services.AddSwaggerGen(c =>
+{
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "JWT Authorization header using the Bearer scheme. Example: \"Bearer {token}\"",
+        Name        = "Authorization",
+        In          = ParameterLocation.Header,
+        Type        = SecuritySchemeType.ApiKey,
+        Scheme      = "Bearer"
+    });
+
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id   = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
 
 
 //   Registring DbContext 
@@ -4876,8 +7957,42 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("MyConnection")));
 
 
+// Registering Auth services
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<JwtHelper>();
 
+// Registering Pet services
+builder.Services.AddScoped<IPetService, PetService>();
+
+// Registering Database Seeder
+builder.Services.AddTransient<DatabaseSeeder>();
+
+// إعدادات قراءة وتأكيد الـ Token
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuerSigningKey = true,
+        // الكود هنا يقرأ المفتاح السري من ملف appsettings.json
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Secret"] ?? "YourSuperSecretKeyForPetHaven123456789")),
+        ValidateIssuer = false,
+        ValidateAudience = false,
+        ValidateLifetime = true
+    };
+});
 var app = builder.Build();
+
+// Run the database seeder on startup
+using (var scope = app.Services.CreateScope())
+{
+    var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
+    await seeder.SeedAsync();
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -4886,7 +8001,12 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+
+
+
 app.UseHttpsRedirection();
+
+app.UseAuthentication();
 
 app.UseAuthorization();
 
@@ -4953,118 +8073,141 @@ namespace PetHaven.Services
     {
         private readonly ApplicationDbContext _context;
         private readonly JwtHelper _jwtHelper;
-        private readonly IConfiguration _configuration; 
+        private readonly IConfiguration _configuration;
 
-        public AuthService(ApplicationDbContext context, JwtHelper jwtHelper , IConfiguration configuration)
+        public AuthService(ApplicationDbContext context, JwtHelper jwtHelper, IConfiguration configuration)
         {
             _context = context;
             _jwtHelper = jwtHelper;
-            _configuration = configuration; 
-
+            _configuration = configuration;
         }
 
         // =============================================
-        // تسجيل Adopter جديد
+        // تسجيل مستخدم جديد (جميع الأدوار)
         // =============================================
-        public async Task<AuthResponseDto> RegisterAdopterAsync(RegisterDto registerDto)
+        public async Task<AuthResponseDto> RegisterAsync(RegisterDto dto)
         {
             // 1. التحقق من وجود البريد الإلكتروني
-            var existingUser = await _context.Users
-                .FirstOrDefaultAsync(u => u.Email == registerDto.Email);
+            var emailExists = await _context.Users
+                .AnyAsync(u => u.Email == dto.Email);
 
-            if (existingUser != null)
-            {
+            if (emailExists)
                 throw new Exception("البريد الإلكتروني مستخدم بالفعل!");
-            }
 
             // 2. التحقق من وجود اسم المستخدم
-            var existingUserName = await _context.Users
-                .FirstOrDefaultAsync(u => u.UserName == registerDto.UserName);
+            var userNameExists = await _context.Users
+                .AnyAsync(u => u.UserName == dto.UserName);
 
-            if (existingUserName != null)
-            {
+            if (userNameExists)
                 throw new Exception("اسم المستخدم مستخدم بالفعل!");
-            }
 
-            // 3. جلب RoleId للأدوبتر
+            // 3. تعيين دور واجهة المستخدم إلى دور قاعدة البيانات
+            var mappedRole = dto.Role.Trim() switch
+            {
+                "Pet Owner"       => "Adopter",
+                "Veterinarian"    => "Vet",
+                "Adoption Center" => "AdoptionCenter",
+                _                 => throw new Exception($"الدور '{dto.Role}' غير مدعوم. الأدوار المقبولة: Pet Owner, Veterinarian, Adoption Center.")
+            };
+
+            // 4. جلب الدور من قاعدة البيانات
             var role = await _context.Roles
-                .FirstOrDefaultAsync(r => r.RoleName == "Adopter");
+                .FirstOrDefaultAsync(r => r.RoleName == mappedRole);
 
             if (role == null)
-            {
-                throw new Exception("الدور 'Adopter' غير موجود! أضف الأدوار أولاً.");
-            }
+                throw new Exception($"الدور '{mappedRole}' غير موجود في قاعدة البيانات! أضف الأدوار أولاً.");
 
-            // 4. تشفير كلمة المرور باستخدام BCrypt
-            var hashedPassword = BCrypt.Net.BCrypt.HashPassword(registerDto.Password);
+            // 5. تشفير كلمة المرور باستخدام BCrypt
+            var hashedPassword = BCrypt.Net.BCrypt.HashPassword(dto.Password);
 
-            // 5. إنشاء المستخدم الجديد
+            // 6. إنشاء المستخدم الأساسي
             var user = new User
             {
-                UserName = registerDto.UserName,
-                FullName = registerDto.FullName,
-                Email = registerDto.Email,
-                Password = hashedPassword,
-                PhoneNumber = registerDto.PhoneNumber,
-                RoleId = role.RoleId
+                FullName    = dto.FullName,
+                UserName    = dto.UserName,
+                PhoneNumber = dto.PhoneNumber,
+                Email       = dto.Email,
+                Password    = hashedPassword,
+                RoleId      = role.RoleId
             };
 
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
-            // 6. إنشاء سجل Adopter مرتبط بالمستخدم
-            var adopter = new Adopter
+            // 7. إنشاء الكيان الفرعي بناءً على الدور
+            switch (mappedRole)
             {
-                UserId = user.UserId,
-                Address = null,
-                HousingType = null,
-                HasPetBefore = false,
-                ExperienceLevel = null,
-                MissedReportsCount = 0,
-                LastReportDate = null,
-                Balance = 0
-            };
+                case "Adopter":
+                    var adopter = new Adopter
+                    {
+                        UserId             = user.UserId,
+                        Address            = null,
+                        HousingType        = null,
+                        HasPetBefore       = false,
+                        ExperienceLevel    = null,
+                        MissedReportsCount = 0,
+                        LastReportDate     = null,
+                        Balance            = 0
+                    };
+                    _context.Adopters.Add(adopter);
 
-            _context.Adopters.Add(adopter);
+                    var cart = new Cart
+                    {
+                        UserId    = user.UserId,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _context.Carts.Add(cart);
+                    break;
+
+                case "AdoptionCenter":
+                    var center = new AdoptionCenter
+                    {
+                        UserId     = user.UserId,
+                        CenterName = dto.FullName,
+                        Address    = null,
+                        ContactInfo = null
+                    };
+                    _context.AdoptionCenters.Add(center);
+                    break;
+
+                case "Vet":
+                    var vet = new Vet
+                    {
+                        UserId     = user.UserId,
+                        FullName   = dto.FullName,
+                        IsVerified = false,
+                        CreatedAt  = DateTime.UtcNow
+                    };
+                    _context.Vets.Add(vet);
+                    break;
+            }
+
             await _context.SaveChangesAsync();
 
-            // 7. إنشاء Cart للمستخدم
-            var cart = new Cart
-            {
-                UserId = user.UserId,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            _context.Carts.Add(cart);
-            await _context.SaveChangesAsync();
-
-            // 8. إنشاء JWT Token
-            var token = _jwtHelper.GenerateToken(user, role.RoleName);
-
-
+            // 8. قراءة مدة انتهاء الصلاحية من appsettings.json وإنشاء JWT
             var expiryInMinutes = _configuration.GetValue<int>("Jwt:ExpiryInMinutes", 20);
-
+            var token = _jwtHelper.GenerateToken(user, role.RoleName);
 
             // 9. إرجاع الرد
             return new AuthResponseDto
             {
-                Token = token,
+                Token        = token,
                 RefreshToken = _jwtHelper.GenerateRefreshToken(),
-                ExpiresAt = DateTime.UtcNow.AddMinutes(expiryInMinutes),  // ← UPDATE THIS
+                ExpiresAt    = DateTime.UtcNow.AddMinutes(expiryInMinutes),
                 User = new UserDto
                 {
-                    UserId = user.UserId,
-                    UserName = user.UserName,
-                    FullName = user.FullName,
-                    Email = user.Email,
+                    UserId      = user.UserId,
+                    UserName    = user.UserName,
+                    FullName    = user.FullName,
+                    Email       = user.Email,
                     PhoneNumber = user.PhoneNumber,
-                    Role = role.RoleName
+                    Role        = role.RoleName
                 }
             };
         }
 
         // =============================================
-        // تسجيل الدخول
+        // تسجيل الدخول (لجميع الأدوار)
         // =============================================
         public async Task<AuthResponseDto> LoginAsync(LoginDto loginDto)
         {
@@ -5074,35 +8217,32 @@ namespace PetHaven.Services
                 .FirstOrDefaultAsync(u => u.Email == loginDto.Email);
 
             if (user == null)
-            {
                 throw new Exception("البريد الإلكتروني أو كلمة المرور غير صحيحة!");
-            }
 
             // 2. التحقق من كلمة المرور باستخدام BCrypt
             var isPasswordValid = BCrypt.Net.BCrypt.Verify(loginDto.Password, user.Password);
 
             if (!isPasswordValid)
-            {
                 throw new Exception("البريد الإلكتروني أو كلمة المرور غير صحيحة!");
-            }
 
-            // 3. إنشاء JWT Token
+            // 3. قراءة مدة انتهاء الصلاحية من appsettings.json وإنشاء JWT
+            var expiryInMinutes = _configuration.GetValue<int>("Jwt:ExpiryInMinutes", 20);
             var token = _jwtHelper.GenerateToken(user, user.Role?.RoleName ?? "User");
 
             // 4. إرجاع الرد
             return new AuthResponseDto
             {
-                Token = token,
+                Token        = token,
                 RefreshToken = _jwtHelper.GenerateRefreshToken(),
-                ExpiresAt = DateTime.UtcNow.AddHours(24),
+                ExpiresAt    = DateTime.UtcNow.AddMinutes(expiryInMinutes),
                 User = new UserDto
                 {
-                    UserId = user.UserId,
-                    UserName = user.UserName,
-                    FullName = user.FullName,
-                    Email = user.Email,
+                    UserId      = user.UserId,
+                    UserName    = user.UserName,
+                    FullName    = user.FullName,
+                    Email       = user.Email,
                     PhoneNumber = user.PhoneNumber,
-                    Role = user.Role?.RoleName ?? "User"
+                    Role        = user.Role?.RoleName ?? "User"
                 }
             };
         }
@@ -5117,8 +8257,245 @@ namespace PetHaven.Services
 {
     public interface IAuthService
     {
-        Task<AuthResponseDto> RegisterAdopterAsync(RegisterDto registerDto);
+        Task<AuthResponseDto> RegisterAsync(RegisterDto dto);
         Task<AuthResponseDto> LoginAsync(LoginDto loginDto);
+    }
+}
+</file>
+
+<file path="Services/IPetService.cs">
+using PetHaven.DTOs;
+
+namespace PetHaven.Services
+{
+    public interface IPetService
+    {
+        /// <summary>
+        /// Adds a new pet linked to the AdoptionCenter that belongs to the given userId.
+        /// </summary>
+        Task<PetResponseDto> AddPetAsync(CreatePetDto dto, string userId);
+
+        /// <summary>
+        /// Returns all pets that are available for adoption (no active appointment / not yet adopted).
+        /// Currently returns every pet in the system; extend the filter as your business rules evolve.
+        /// </summary>
+        Task<IEnumerable<PetResponseDto>> GetAllAvailablePetsAsync();
+
+        /// <summary>
+        /// Returns all pets belonging to the AdoptionCenter linked to the given userId.
+        /// </summary>
+        Task<IEnumerable<PetResponseDto>> GetPetsByCenterAsync(string userId);
+
+        /// <summary>
+        /// Updates the editable fields of a pet. Verifies that the pet belongs
+        /// to the AdoptionCenter of the logged-in user before applying changes.
+        /// </summary>
+        Task<PetResponseDto> UpdatePetAsync(int petId, UpdatePetDto dto, string userId);
+
+        /// <summary>
+        /// Deletes a pet permanently. Verifies ownership before removal.
+        /// </summary>
+        Task DeletePetAsync(int petId, string userId);
+    }
+}
+</file>
+
+<file path="Services/PetService.cs">
+using Microsoft.EntityFrameworkCore;
+using PetHaven.Data;
+using PetHaven.DTOs;
+using PetHaven.Models;
+
+namespace PetHaven.Services
+{
+    public class PetService : IPetService
+    {
+        private readonly ApplicationDbContext _context;
+
+        public PetService(ApplicationDbContext context)
+        {
+            _context = context;
+        }
+
+        // =============================================
+        // Add a pet linked to the logged-in center
+        // =============================================
+        public async Task<PetResponseDto> AddPetAsync(CreatePetDto dto, string userId)
+        {
+            // 1. Parse the userId claim (stored as int in the database)
+            if (!int.TryParse(userId, out var parsedUserId))
+                throw new Exception("معرّف المستخدم غير صالح.");
+
+            // 2. Find the AdoptionCenter that belongs to this user
+            var center = await _context.AdoptionCenters
+                .FirstOrDefaultAsync(c => c.UserId == parsedUserId);
+
+            if (center == null)
+                throw new Exception("لم يتم العثور على مركز تبني مرتبط بهذا الحساب.");
+
+            // 3. Create and persist the Pet entity
+            var pet = new Pet
+            {
+                CenterId     = center.CenterId,
+                PetName      = dto.Name,
+                Species      = dto.Species,
+                Breed        = dto.Breed,
+                Age          = dto.Age,
+                Gender       = dto.Gender,
+                Description  = dto.Description,
+                HealthStatus = dto.HealthStatus,
+                ImageURL     = dto.ImageUrl
+            };
+
+            _context.Pets.Add(pet);
+            await _context.SaveChangesAsync();
+
+            // 4. Return response DTO
+            return new PetResponseDto
+            {
+                PetId        = pet.PetId,
+                Name         = pet.PetName,
+                Species      = pet.Species,
+                Breed        = pet.Breed,
+                Age          = pet.Age,
+                Gender       = pet.Gender,
+                Description  = pet.Description,
+                HealthStatus = pet.HealthStatus,
+                ImageUrl     = pet.ImageURL,
+                CenterName   = center.CenterName
+            };
+        }
+
+        // =============================================
+        // Get all available pets (public endpoint)
+        // =============================================
+        public async Task<IEnumerable<PetResponseDto>> GetAllAvailablePetsAsync()
+        {
+            var pets = await _context.Pets
+                .Include(p => p.Center)
+                .ToListAsync();
+
+            return pets.Select(p => new PetResponseDto
+            {
+                PetId        = p.PetId,
+                Name         = p.PetName,
+                Species      = p.Species,
+                Breed        = p.Breed,
+                Age          = p.Age,
+                Gender       = p.Gender,
+                Description  = p.Description,
+                HealthStatus = p.HealthStatus,
+                ImageUrl     = p.ImageURL,
+                CenterName   = p.Center?.CenterName ?? string.Empty
+            });
+        }
+
+        // =============================================
+        // Get pets belonging to the logged-in center
+        // =============================================
+        public async Task<IEnumerable<PetResponseDto>> GetPetsByCenterAsync(string userId)
+        {
+            // 1. Parse the userId claim
+            if (!int.TryParse(userId, out var parsedUserId))
+                throw new Exception("معرّف المستخدم غير صالح.");
+
+            // 2. Find the AdoptionCenter linked to this user
+            var center = await _context.AdoptionCenters
+                .FirstOrDefaultAsync(c => c.UserId == parsedUserId);
+
+            if (center == null)
+                throw new Exception("لم يتم العثور على مركز تبني مرتبط بهذا الحساب.");
+
+            // 3. Query only pets that belong to this center
+            var pets = await _context.Pets
+                .Where(p => p.CenterId == center.CenterId)
+                .ToListAsync();
+
+            return pets.Select(p => new PetResponseDto
+            {
+                PetId        = p.PetId,
+                Name         = p.PetName,
+                Species      = p.Species,
+                Breed        = p.Breed,
+                Age          = p.Age,
+                Gender       = p.Gender,
+                Description  = p.Description,
+                HealthStatus = p.HealthStatus,
+                ImageUrl     = p.ImageURL,
+                CenterName   = center.CenterName
+            });
+        }
+        // =============================================
+        // Update a pet (ownership-verified)
+        // =============================================
+        public async Task<PetResponseDto> UpdatePetAsync(int petId, UpdatePetDto dto, string userId)
+        {
+            // 1. Parse the userId claim
+            if (!int.TryParse(userId, out var parsedUserId))
+                throw new Exception("معرّف المستخدم غير صالح.");
+
+            // 2. Load the pet together with its center (single DB round-trip)
+            var pet = await _context.Pets
+                .Include(p => p.Center)
+                .FirstOrDefaultAsync(p => p.PetId == petId);
+
+            if (pet == null)
+                throw new Exception("الحيوان الأليف المطلوب غير موجود.");
+
+            // 3. Verify ownership — the center linked to this pet must belong to the logged-in user
+            if (pet.Center == null || pet.Center.UserId != parsedUserId)
+                throw new UnauthorizedAccessException("ليس لديك صلاحية لتعديل هذا الحيوان الأليف.");
+
+            // 4. Apply only the fields that were provided (null = keep existing value)
+            if (dto.Name        != null) pet.PetName      = dto.Name;
+            if (dto.Age         != null) pet.Age          = dto.Age;
+            if (dto.HealthStatus!= null) pet.HealthStatus = dto.HealthStatus;
+            if (dto.Description != null) pet.Description  = dto.Description;
+            if (dto.ImageUrl    != null) pet.ImageURL     = dto.ImageUrl;
+
+            await _context.SaveChangesAsync();
+
+            // 5. Return the updated response DTO
+            return new PetResponseDto
+            {
+                PetId        = pet.PetId,
+                Name         = pet.PetName,
+                Species      = pet.Species,
+                Breed        = pet.Breed,
+                Age          = pet.Age,
+                Gender       = pet.Gender,
+                Description  = pet.Description,
+                HealthStatus = pet.HealthStatus,
+                ImageUrl     = pet.ImageURL,
+                CenterName   = pet.Center.CenterName
+            };
+        }
+
+        // =============================================
+        // Delete a pet (ownership-verified)
+        // =============================================
+        public async Task DeletePetAsync(int petId, string userId)
+        {
+            // 1. Parse the userId claim
+            if (!int.TryParse(userId, out var parsedUserId))
+                throw new Exception("معرّف المستخدم غير صالح.");
+
+            // 2. Load the pet together with its center
+            var pet = await _context.Pets
+                .Include(p => p.Center)
+                .FirstOrDefaultAsync(p => p.PetId == petId);
+
+            if (pet == null)
+                throw new Exception("الحيوان الأليف المطلوب غير موجود.");
+
+            // 3. Verify ownership
+            if (pet.Center == null || pet.Center.UserId != parsedUserId)
+                throw new UnauthorizedAccessException("ليس لديك صلاحية لحذف هذا الحيوان الأليف.");
+
+            // 4. Remove and persist
+            _context.Pets.Remove(pet);
+            await _context.SaveChangesAsync();
+        }
     }
 }
 </file>
