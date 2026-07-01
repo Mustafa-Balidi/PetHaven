@@ -1,0 +1,101 @@
+breed,animal_type,size,energy,grooming,trainability,noise,maintenance,budget,experience,affection,kid_friendly
+Labrador Retriever,dog,large,high,medium,high,medium,medium,medium,beginner,very_affectionate,high
+German Shepherd,dog,large,high,medium,high,medium,high,high,expert,balanced,medium
+Golden Retriever,dog,large,high,high,high,medium,medium,medium,beginner,very_affectionate,high
+French Bulldog,dog,small,low,low,medium,low,medium,high,beginner,very_affectionate,high
+Beagle,dog,medium,high,low,medium,high,medium,medium,intermediate,very_affectionate,high
+Poodle,dog,medium,high,high,high,medium,high,high,beginner,very_affectionate,high
+Rottweiler,dog,large,medium,low,high,low,high,high,expert,balanced,medium
+German Shorthaired Pointer,dog,large,high,low,high,medium,medium,medium,intermediate,balanced,high
+Boxer,dog,large,high,low,medium,medium,medium,medium,intermediate,very_affectionate,high
+Siberian Husky,dog,large,high,high,medium,high,high,medium,expert,very_affectionate,high
+Dachshund,dog,small,medium,medium,medium,high,medium,medium,beginner,balanced,medium
+Great Dane,dog,large,low,low,medium,low,high,high,intermediate,very_affectionate,high
+Pembroke Welsh Corgi,dog,small,high,medium,high,medium,medium,medium,beginner,very_affectionate,high
+Australian Shepherd,dog,large,high,high,high,medium,high,medium,expert,balanced,high
+Yorkshire Terrier,dog,small,medium,high,medium,high,medium,medium,beginner,very_affectionate,medium
+Cavalier King Charles Spaniel,dog,small,low,medium,medium,low,medium,high,beginner,very_affectionate,high
+Shih Tzu,dog,small,low,high,medium,low,medium,medium,beginner,very_affectionate,high
+Border Collie,dog,medium,high,medium,high,medium,high,medium,expert,balanced,high
+Doberman Pinscher,dog,large,high,low,high,medium,high,high,expert,very_affectionate,medium
+Chihuahua,dog,small,medium,low,medium,high,low,low,intermediate,balanced,low
+Persian,cat,medium,low,high,low,low,high,medium,beginner,balanced,medium
+Maine Coon,cat,large,medium,high,high,medium,high,high,intermediate,very_affectionate,high
+Siamese,cat,medium,high,low,high,high,medium,medium,intermediate,very_affectionate,high
+Ragdoll,cat,large,low,medium,medium,low,medium,medium,beginner,very_affectionate,high
+British Shorthair,cat,medium,low,low,medium,low,low,medium,beginner,balanced,high
+American Shorthair,cat,medium,medium,low,medium,low,low,low,beginner,balanced,high
+Abyssinian,cat,medium,high,low,high,medium,medium,medium,intermediate,balanced,high
+Sphynx,cat,medium,high,high,medium,medium,high,high,expert,very_affectionate,high
+Scottish Fold,cat,medium,low,low,medium,low,medium,medium,beginner,very_affectionate,high
+Bengal,cat,large,high,low,high,high,high,high,expert,balanced,medium
+Russian Blue,cat,medium,low,low,medium,low,low,medium,beginner,independent,medium
+Birman,cat,medium,low,medium,medium,low,medium,medium,beginner,very_affectionate,high
+Oriental Shorthair,cat,medium,high,low,high,high,medium,high,intermediate,very_affectionate,high
+Norwegian Forest Cat,cat,large,medium,high,medium,low,medium,medium,intermediate,balanced,high
+Devon Rex,cat,small,high,low,high,medium,medium,high,intermediate,very_affectionate,high
+Burmese,cat,medium,high,low,high,medium,medium,medium,beginner,very_affectionate,high
+Siberian,cat,large,medium,high,high,low,medium,medium,beginner,very_affectionate,high
+Himalayan,cat,medium,low,high,low,low,high,medium,beginner,balanced,medium
+Turkish Angora,cat,medium,high,medium,high,medium,medium,medium,intermediate,very_affectionate,high
+Egyptian Mau,cat,medium,high,low,medium,medium,medium,high,intermediate,balanced,high
+Budgerigar,bird,small,high,low,high,medium,low,low,beginner,balanced,high
+Cockatiel,bird,medium,medium,medium,high,medium,medium,low,beginner,very_affectionate,high
+Lovebird,bird,small,high,low,medium,high,medium,low,intermediate,balanced,medium
+Indian Ringneck Parakeet,bird,medium,high,low,high,high,high,medium,expert,independent,low
+Green-Cheeked Conure,bird,small,high,low,high,high,medium,medium,intermediate,very_affectionate,high
+Cockatoo,bird,large,high,high,high,high,high,high,expert,very_affectionate,medium
+African Grey Parrot,bird,large,medium,medium,high,medium,high,high,expert,balanced,medium
+Macaw,bird,large,high,medium,high,high,high,high,expert,very_affectionate,medium
+Canary,bird,small,low,low,low,medium,low,low,beginner,independent,high
+Zebra Finch,bird,small,high,low,low,medium,low,low,beginner,independent,high
+Gouldian Finch,bird,small,low,low,low,low,medium,medium,intermediate,independent,medium
+Eclectus Parrot,bird,large,medium,medium,high,high,high,high,expert,balanced,medium
+Amazon Parrot,bird,large,high,medium,high,high,high,high,expert,balanced,medium
+Quaker Parrot,bird,medium,high,low,high,high,medium,medium,intermediate,very_affectionate,high
+Pacific Parrotlet,bird,small,high,low,medium,medium,medium,low,intermediate,balanced,medium
+Senegal Parrot,bird,medium,medium,low,high,medium,medium,medium,intermediate,balanced,medium
+Pionus Parrot,bird,medium,low,low,medium,low,medium,medium,intermediate,balanced,high
+Java Sparrow,bird,small,medium,low,low,low,low,low,beginner,independent,high
+Diamond Dove,bird,small,low,low,low,low,low,low,beginner,independent,high
+Button Quail,bird,small,medium,low,low,low,low,low,beginner,independent,medium
+Betta Fish,fish,small,low,low,low,low,low,low,beginner,independent,high
+Guppy,fish,small,medium,low,low,low,low,low,beginner,independent,high
+Goldfish,fish,medium,high,low,low,low,medium,medium,beginner,independent,high
+Neon Tetra,fish,small,medium,low,low,low,low,low,beginner,independent,high
+Angelfish,fish,medium,medium,low,low,low,medium,medium,intermediate,independent,medium
+Zebra Danio,fish,small,high,low,low,low,low,low,beginner,independent,high
+Molly,fish,small,medium,low,low,low,low,low,beginner,independent,high
+Platy,fish,small,medium,low,low,low,low,low,beginner,independent,high
+Corydoras Catfish,fish,small,medium,low,low,low,low,low,beginner,independent,high
+Discus,fish,medium,low,low,low,low,high,high,expert,independent,medium
+Holland Lop,rabbit,small,medium,medium,medium,low,medium,medium,beginner,very_affectionate,high
+Netherland Dwarf,rabbit,small,high,low,medium,low,medium,medium,intermediate,balanced,medium
+Mini Rex,rabbit,small,medium,low,high,low,low,low,beginner,very_affectionate,high
+Flemish Giant,rabbit,large,low,low,high,low,high,high,intermediate,very_affectionate,high
+Lionhead,rabbit,small,medium,high,medium,low,medium,medium,beginner,very_affectionate,high
+French Lop,rabbit,large,low,medium,medium,low,high,high,intermediate,very_affectionate,high
+New Zealand,rabbit,large,medium,low,medium,low,medium,medium,beginner,balanced,high
+Rex,rabbit,medium,medium,low,high,low,medium,medium,beginner,very_affectionate,high
+English Angora,rabbit,medium,low,high,medium,low,high,high,expert,balanced,medium
+Dutch,rabbit,small,high,low,high,low,low,low,beginner,very_affectionate,high
+Syrian Hamster,hamster,small,medium,low,low,low,low,low,beginner,balanced,medium
+Campbell Dwarf Hamster,hamster,small,high,low,low,low,low,low,intermediate,independent,low
+Winter White Dwarf Hamster,hamster,small,medium,low,low,low,low,low,beginner,balanced,medium
+Roborovski Hamster,hamster,small,high,low,low,low,low,low,expert,independent,low
+Chinese Hamster,hamster,small,medium,low,low,low,low,low,intermediate,balanced,medium
+Long-Haired Syrian,hamster,small,medium,high,low,low,medium,low,intermediate,balanced,medium
+Teddy Bear Hamster,hamster,small,medium,low,low,low,low,low,beginner,very_affectionate,high
+Black Bear Hamster,hamster,small,low,low,low,low,low,low,beginner,very_affectionate,high
+Albino Syrian Hamster,hamster,small,medium,low,low,low,low,low,beginner,balanced,medium
+Panda Hamster,hamster,small,medium,low,low,low,low,low,beginner,balanced,high
+Red-Eared Slider,turtle,medium,medium,low,low,low,medium,medium,beginner,independent,high
+Russian Tortoise,turtle,small,low,low,low,low,low,low,beginner,independent,high
+Greek Tortoise,turtle,small,low,low,low,low,medium,medium,intermediate,independent,medium
+Sulcata Tortoise,turtle,large,medium,low,low,low,high,high,expert,independent,medium
+Painted Turtle,turtle,small,medium,low,low,low,medium,medium,beginner,independent,high
+Box Turtle,turtle,small,low,low,low,low,high,medium,expert,independent,medium
+Hermann Tortoise,turtle,small,low,low,low,low,low,medium,beginner,independent,high
+Leopard Tortoise,turtle,large,low,low,low,low,high,high,expert,independent,medium
+Musk Turtle,turtle,small,low,low,low,low,low,low,beginner,independent,high
+Mud Turtle,turtle,small,low,low,low,low,low,low,beginner,independent,high
