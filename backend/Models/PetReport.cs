@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace PetHaven.Models
@@ -23,6 +23,6 @@ namespace PetHaven.Models
 
         // العلاقات
         [ForeignKey("AdoptionRequestId")]
-        public virtual Adopter? Adopter { get; set; }
+        public virtual AdoptionRequest AdoptionRequest { get; set; } = null!;
     }
 }

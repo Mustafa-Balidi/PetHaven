@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using PetHaven.Models;
 
 namespace PetHaven.Data
@@ -31,7 +31,7 @@ namespace PetHaven.Data
         public DbSet<Wishlist> Wishlists { get; set; }
         public DbSet<Payment> Payments { get; set; }
         public DbSet<Appointment> Appointments { get; set; }
-        public DbSet<AppointmentRequest> AppointmentRequests { get; set; }
+        public DbSet<AdoptionRequest> AdoptionRequests { get; set; }
         public DbSet<Diagnosis> Diagnoses { get; set; }
         public DbSet<PetReport> PetReports { get; set; }
         public DbSet<Vet> Vets { get; set; }
@@ -296,12 +296,30 @@ namespace PetHaven.Data
                 .OnDelete(DeleteBehavior.Restrict);
 
             // ---------------------------------------------
-            // 2.24 PetReport (Many-to-One with Adopter)
+            // 2.24 PetReport (Many-to-One with AdoptionRequest)
             // ---------------------------------------------
             modelBuilder.Entity<PetReport>()
-                .HasOne(pr => pr.Adopter)
-                .WithMany(a => a.PetReports)
+                .HasOne(pr => pr.AdoptionRequest)
+                .WithMany(ar => ar.PetReports)
                 .HasForeignKey(pr => pr.AdoptionRequestId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // ---------------------------------------------
+            // 2.25 AdoptionRequest → Adopter (Many-to-One)
+            // ---------------------------------------------
+            modelBuilder.Entity<AdoptionRequest>()
+                .HasOne(ar => ar.Adopter)
+                .WithMany()
+                .HasForeignKey(ar => ar.AdopterId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // ---------------------------------------------
+            // 2.26 AdoptionRequest → Pet (Many-to-One)
+            // ---------------------------------------------
+            modelBuilder.Entity<AdoptionRequest>()
+                .HasOne(ar => ar.Pet)
+                .WithMany()
+                .HasForeignKey(ar => ar.PetId)
                 .OnDelete(DeleteBehavior.Restrict);
         }
     }

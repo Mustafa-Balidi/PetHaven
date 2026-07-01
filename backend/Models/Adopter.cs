@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace PetHaven.Models
@@ -23,6 +23,8 @@ namespace PetHaven.Models
         public string? ExperienceLevel { get; set; }
 
         public int MissedReportsCount { get; set; }
+
+        public int FreeHoursPerDay { get; set; }
 
         public DateTime? LastReportDate { get; set; }
 

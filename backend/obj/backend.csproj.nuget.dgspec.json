@@ -1,26 +1,28 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\ASUS\\Downloads\\PetHaven\\backend\\backend.csproj": {}
+    "C:\\Users\\anasd\\OneDrive\\Desktop\\clone\\backend\\backend.csproj": {}
   },
   "projects": {
-    "C:\\Users\\ASUS\\Downloads\\PetHaven\\backend\\backend.csproj": {
+    "C:\\Users\\anasd\\OneDrive\\Desktop\\clone\\backend\\backend.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\ASUS\\Downloads\\PetHaven\\backend\\backend.csproj",
+        "projectUniqueName": "C:\\Users\\anasd\\OneDrive\\Desktop\\clone\\backend\\backend.csproj",
         "projectName": "backend",
-        "projectPath": "C:\\Users\\ASUS\\Downloads\\PetHaven\\backend\\backend.csproj",
-        "packagesPath": "C:\\Users\\ASUS\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\ASUS\\Downloads\\PetHaven\\backend\\obj\\",
+        "projectPath": "C:\\Users\\anasd\\OneDrive\\Desktop\\clone\\backend\\backend.csproj",
+        "packagesPath": "C:\\Users\\anasd\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\anasd\\OneDrive\\Desktop\\clone\\backend\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "C:\\Users\\ASUS\\AppData\\Roaming\\NuGet\\NuGet.Config"
+          "C:\\Users\\anasd\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
         "originalTargetFrameworks": [
           "net8.0"
         ],
         "sources": {
-          "https://api.nuget.org/v3/index.json": {}
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "https://www.nuget.org/api/v2/": {}
         },
         "frameworks": {
           "net8.0": {
@@ -71,7 +73,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.422/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.200/PortableRuntimeIdentifierGraph.json"
         }
       }
     }

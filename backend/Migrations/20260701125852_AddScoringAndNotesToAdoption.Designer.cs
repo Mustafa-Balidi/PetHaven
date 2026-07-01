@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PetHaven.Data;
 
@@ -11,9 +12,11 @@ using PetHaven.Data;
 namespace PetHaven.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260701125852_AddScoringAndNotesToAdoption")]
+    partial class AddScoringAndNotesToAdoption
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -101,42 +104,6 @@ namespace PetHaven.Migrations
                     b.ToTable("AdoptionCenters");
                 });
 
-            modelBuilder.Entity("PetHaven.Models.AdoptionRequest", b =>
-                {
-                    b.Property<int>("AdoptionRequestId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("AdoptionRequestId"));
-
-                    b.Property<int>("AdopterId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("CenterNote")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("PetId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Score")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Status")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.HasKey("AdoptionRequestId");
-
-                    b.HasIndex("AdopterId");
-
-                    b.HasIndex("PetId");
-
-                    b.ToTable("AdoptionRequests");
-                });
-
             modelBuilder.Entity("PetHaven.Models.Appointment", b =>
                 {
                     b.Property<int>("AppointmentId")
@@ -168,6 +135,33 @@ namespace PetHaven.Migrations
                     b.HasIndex("PetId");
 
                     b.ToTable("Appointments");
+                });
+
+            modelBuilder.Entity("PetHaven.Models.AppointmentRequest", b =>
+                {
+                    b.Property<int>("AppointmentRequestId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("AppointmentRequestId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("HealthStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ImageURL")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("AppointmentRequestId");
+
+                    b.ToTable("AppointmentRequests");
                 });
 
             modelBuilder.Entity("PetHaven.Models.Blacklist", b =>
@@ -498,9 +492,6 @@ namespace PetHaven.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ReportId"));
 
-                    b.Property<int?>("AdopterId")
-                        .HasColumnType("int");
-
                     b.Property<int>("AdoptionRequestId")
                         .HasColumnType("int");
 
@@ -519,8 +510,6 @@ namespace PetHaven.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("ReportId");
-
-                    b.HasIndex("AdopterId");
 
                     b.HasIndex("AdoptionRequestId");
 
@@ -780,25 +769,6 @@ namespace PetHaven.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("PetHaven.Models.AdoptionRequest", b =>
-                {
-                    b.HasOne("PetHaven.Models.Adopter", "Adopter")
-                        .WithMany()
-                        .HasForeignKey("AdopterId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("PetHaven.Models.Pet", "Pet")
-                        .WithMany()
-                        .HasForeignKey("PetId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Adopter");
-
-                    b.Navigation("Pet");
-                });
-
             modelBuilder.Entity("PetHaven.Models.Appointment", b =>
                 {
                     b.HasOne("PetHaven.Models.Adopter", "Adopter")
@@ -951,17 +921,13 @@ namespace PetHaven.Migrations
 
             modelBuilder.Entity("PetHaven.Models.PetReport", b =>
                 {
-                    b.HasOne("PetHaven.Models.Adopter", null)
-                        .WithMany("PetReports")
-                        .HasForeignKey("AdopterId");
-
-                    b.HasOne("PetHaven.Models.AdoptionRequest", "AdoptionRequest")
+                    b.HasOne("PetHaven.Models.Adopter", "Adopter")
                         .WithMany("PetReports")
                         .HasForeignKey("AdoptionRequestId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("AdoptionRequest");
+                    b.Navigation("Adopter");
                 });
 
             modelBuilder.Entity("PetHaven.Models.Product", b =>
@@ -1051,11 +1017,6 @@ namespace PetHaven.Migrations
                     b.Navigation("Pets");
 
                     b.Navigation("Products");
-                });
-
-            modelBuilder.Entity("PetHaven.Models.AdoptionRequest", b =>
-                {
-                    b.Navigation("PetReports");
                 });
 
             modelBuilder.Entity("PetHaven.Models.Cart", b =>
