@@ -26,6 +26,8 @@ namespace PetHaven.Services
             if (adopter == null)
                 throw new Exception("لم يتم العثور على ملف المتبني. يرجى التأكد من تسجيل الحساب كمتبنٍ.");
 
+
+
             // ─── b. Update Adopter profile ─────────────────────────────────────────
             adopter.HousingType     = dto.HousingType;
             adopter.HasPetBefore    = dto.HasPetBefore;
@@ -56,9 +58,22 @@ namespace PetHaven.Services
                 score += 10;
 
             // ─── d. Verify Pet exists ──────────────────────────────────────────────
-            var petExists = await _context.Pets.AnyAsync(p => p.PetId == dto.PetId);
-            if (!petExists)
+
+            //var petExists = await _context.Pets.AnyAsync(p => p.PetId == dto.PetId);
+            //if (!petExists)
+            //    throw new Exception("الحيوان المطلوب غير موجود أو تم اعتماده بالفعل.");
+            // --- d. Verify Pet exists ---
+            var pet = await _context.Pets.FindAsync(dto.PetId);
+            if (pet == null)
                 throw new Exception("الحيوان المطلوب غير موجود أو تم اعتماده بالفعل.");
+            // 🛑 فحص القائمة السوداء: هل هذا المتبني محظور في مركز هذا الحيوان؟
+            var isBlacklisted = await _context.Blacklists
+                .AnyAsync(b => b.AdopterId == adopter.AdopterId
+                            && b.CenterId == pet.CenterId
+                            && b.IsActive);
+
+            if (isBlacklisted)
+                throw new UnauthorizedAccessException("عذراً، لا يمكنك إرسال طلب تبني. لقد تم حظرك من قبل هذا المركز.");
 
             // ─── e. Create AdoptionRequest ─────────────────────────────────────────
             var request = new AdoptionRequest

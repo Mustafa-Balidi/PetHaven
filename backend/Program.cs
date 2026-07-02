@@ -58,6 +58,9 @@ builder.Services.AddScoped<IPetService, PetService>();
 // Registering PetReport services
 builder.Services.AddScoped<IPetReportService, PetReportService>();
 
+// Registering Blacklist services
+builder.Services.AddScoped<IBlacklistService, BlacklistService>();
+
 // Registering Adoption services
 builder.Services.AddScoped<IAdoptionService, AdoptionService>();
 
