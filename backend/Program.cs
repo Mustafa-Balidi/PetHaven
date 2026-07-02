@@ -46,20 +46,30 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("MyConnection")));
 
+//  Registering Dependency Injections (DI) : 
 
 // Registering Auth services
 builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<IAdoptionService, AdoptionService>();
 builder.Services.AddScoped<JwtHelper>();
 
 // Registering Pet services
 builder.Services.AddScoped<IPetService, PetService>();
+
+// Registering PetReport services
+builder.Services.AddScoped<IPetReportService, PetReportService>();
+
+// Registering Blacklist services
+builder.Services.AddScoped<IBlacklistService, BlacklistService>();
 
 // Registering Adoption services
 builder.Services.AddScoped<IAdoptionService, AdoptionService>();
 
 // Registering Database Seeder
 builder.Services.AddTransient<DatabaseSeeder>();
+
+
+
+
 
 // إعدادات قراءة وتأكيد الـ Token
 builder.Services.AddAuthentication(options =>
